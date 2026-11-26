@@ -8,6 +8,10 @@ from google.oauth2.service_account import Credentials
 st.set_page_config(page_title="Registro de OT", page_icon="🛠️", layout="wide")
 
 ENCABEZADOS = ["Fecha", "OT", "Horas_60", "Horas_100", "Periodo", "Foto"]
+URL_HOJA_POR_DEFECTO = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1NMHSEFxVgDqvUys4cbPQcXm9lRYzT0frSkZetslU6n0/edit"
+)
 CARPETA_FOTOS = Path("fotos_ot")
 CARPETA_FOTOS.mkdir(parents=True, exist_ok=True)
 
@@ -23,7 +27,8 @@ def obtener_hoja():
         scopes=scopes,
     )
     cliente = gspread.authorize(credenciales)
-    hoja = cliente.open_by_url(st.secrets["hoja_url"]).sheet1
+    url_hoja = st.secrets.get("hoja_url", URL_HOJA_POR_DEFECTO)
+    hoja = cliente.open_by_url(url_hoja).sheet1
     if not hoja.row_values(1):
         hoja.append_row(ENCABEZADOS)
     return hoja
