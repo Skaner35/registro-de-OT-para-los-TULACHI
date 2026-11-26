@@ -2,44 +2,25 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date
 from pathlib import Path
-import gspread
-from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Registro de OT", page_icon="🛠️", layout="wide")
 
 ENCABEZADOS = ["Fecha", "OT", "Horas_60", "Horas_100", "Periodo", "Foto"]
-URL_HOJA_POR_DEFECTO = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1NMHSEFxVgDqvUys4cbPQcXm9lRYzT0frSkZetslU6n0/edit"
-)
+ARCHIVO_CSV = Path("registros_ot.csv")
 CARPETA_FOTOS = Path("fotos_ot")
 CARPETA_FOTOS.mkdir(parents=True, exist_ok=True)
 
 
-@st.cache_resource
-def obtener_hoja():
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-    credenciales = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes,
-    )
-    cliente = gspread.authorize(credenciales)
-    url_hoja = st.secrets.get("hoja_url", URL_HOJA_POR_DEFECTO)
-    hoja = cliente.open_by_url(url_hoja).sheet1
-    if not hoja.row_values(1):
-        hoja.append_row(ENCABEZADOS)
-    return hoja
-
-
 def cargar_datos():
-    hoja = obtener_hoja()
-    registros = hoja.get_all_records()
-    if not registros:
+    if not ARCHIVO_CSV.exists():
+        df_vacio = pd.DataFrame(columns=ENCABEZADOS)
+        df_vacio.to_csv(ARCHIVO_CSV, index=False, encoding="utf-8")
+        return df_vacio
+
+    df = pd.read_csv(ARCHIVO_CSV, encoding="utf-8")
+    if df.empty:
         return pd.DataFrame(columns=ENCABEZADOS)
-    df = pd.DataFrame(registros)
+
     for col in ENCABEZADOS:
         if col not in df.columns:
             df[col] = ""
@@ -47,15 +28,17 @@ def cargar_datos():
 
 
 def guardar_fila(fecha_str, ot_str, h60, h100, periodo_str, ruta_foto_str):
-    hoja = obtener_hoja()
-    hoja.append_row([
-        str(fecha_str),
-        str(ot_str),
-        float(h60),
-        float(h100),
-        str(periodo_str),
-        str(ruta_foto_str),
-    ])
+    df_actual = cargar_datos()
+    nueva_fila = pd.DataFrame([{
+        "Fecha": str(fecha_str),
+        "OT": str(ot_str),
+        "Horas_60": float(h60),
+        "Horas_100": float(h100),
+        "Periodo": str(periodo_str),
+        "Foto": str(ruta_foto_str),
+    }])
+    df_actualizado = pd.concat([df_actual, nueva_fila], ignore_index=True)
+    df_actualizado.to_csv(ARCHIVO_CSV, index=False, encoding="utf-8")
 
 
 def calcular_periodo(fecha_obj):
@@ -114,7 +97,7 @@ with col_form:
             periodo = calcular_periodo(fecha)
             guardar_fila(fecha.strftime("%Y-%m-%d"), ot.strip(), h60, h100, periodo, ruta_foto)
             st.session_state["limpiar_campos"] = True
-            st.success("Registro guardado en Google Sheets.")
+            st.success("Registro guardado correctamente.")
             st.rerun()
 
 with col_tabla:
@@ -122,7 +105,7 @@ with col_tabla:
     df = cargar_datos()
 
     if df.empty:
-        st.info("Aún no hay registros en la hoja de Google Sheets.")
+        st.info("Aún no hay registros guardados.")
     else:
         periodos = ["Todos"] + sorted(df["Periodo"].dropna().unique().tolist(), reverse=True)
         periodo_sel = st.selectbox("Filtrar por Periodo", periodos)
@@ -156,4 +139,4 @@ with col_tabla:
             if ruta_img and ruta_img.is_file():
                 st.image(str(ruta_img), caption=f"OT {fila['OT']} - {fila['Fecha']}", use_container_width=True)
             else:
-                st.caption("Este registro no tiene foto guardada o el archivo ya no está en el servidor temporal.")
+                st.caption("Este registro no tiene foto guardada o el archivo ya no está en el servidor.")
